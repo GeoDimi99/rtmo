@@ -109,6 +109,7 @@ Install once, from a clone, on the machine that builds (developer) and on the on
 
 ```bash
 git clone https://github.com/GeoDimi99/rtmo.git && cd rtmo
+./install.sh                                       # interactive: action, role, checks, CPU, confirmation
 sudo ./install.sh --role developer --role device   # rtmo, rtmod, deploy-manager image, Redis
 ./install.sh --role developer --check              # only check the prerequisites
 ```
