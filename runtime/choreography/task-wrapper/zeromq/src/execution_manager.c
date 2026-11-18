@@ -554,12 +554,18 @@ void* task_wrapper_func(void* data){
     /* -------------------------------------------------- */
 
     /* Write the result */
-    schedule_set_result(sched, task_id, "{}");
+    gint runs_left = schedule_set_result(sched, task_id, "{}");
 
     /* Measure the end_time_result (for the performance): after the result is stored in the schedule */
     clock_gettime(CLOCK_MONOTONIC, &ts);
     glong end_time_result = ts.tv_sec * 1000000000L + ts.tv_nsec;
     /* -------------------------------------------------- */
+
+    /* Logged outside the measured window: a log call may block (stdout) and let
+     * another thread of the same priority take the core */
+    if (runs_left >= 0) {
+        log_message(LOG_INFO, "execution-manager", "Task %u updated: %d runs left.", task_id, runs_left);
+    }
 
     log_message(LOG_DEBUG, "task-wrapper", "ThreadCall %u: termination thread function", task_id);
 

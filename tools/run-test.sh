@@ -4,6 +4,12 @@
 #
 #  Usage:
 #       tools/run-test.sh <manifest> [test-name] [--coordination C] [--technology T] [--iterations N]
+#                         [--no-build]
+#
+#    --no-build: skip step 1, for a device that got the images with 'rtmo push'
+#    (two-machine test). Give the manifest pushed to the device
+#    (/srv/rtmo/apps/<app>/<manifest>.yaml) and the same overrides as for
+#    'rtmo build' and 'rtmo push'; only rtmod is needed on the device.
 #
 #    1. rtmo build    (task images, execution manager, lock file)
 #    2. rtmod stop    (containers of a previous run); choreography-mqueue: empty /dev/mqueue
@@ -16,7 +22,8 @@
 #  none is given): logs/, manifest.yaml (with the overrides), perf.csv,
 #  stats.csv, report.pdf. FORCE=1 overwrites an existing folder.
 #
-#  Needs rtmo and rtmod on the PATH (install.sh --role developer --role device).
+#  Needs rtmo and rtmod on the PATH (install.sh --role developer --role device);
+#  with --no-build only rtmod.
 # ============================================================================
 
 set -uo pipefail
@@ -24,9 +31,10 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tools/report-lib.sh"
 
-MANIFEST="" NAME="" OVERRIDES=()
+MANIFEST="" NAME="" OVERRIDES=() BUILD=1
 while [ $# -gt 0 ]; do
     case "$1" in
+        --no-build) BUILD=0; shift ;;
         --coordination|--technology|--iterations)
             [ $# -ge 2 ] || { echo "[ERROR] $1 needs a value" >&2; exit 2; }
             OVERRIDES+=("$1" "$2"); shift 2 ;;
@@ -35,19 +43,45 @@ while [ $# -gt 0 ]; do
            else echo "[ERROR] unexpected argument $1" >&2; exit 2; fi; shift ;;
     esac
 done
-[ -n "$MANIFEST" ] || { sed -n '4,6p' "$0" >&2; exit 2; }
-for cmd in rtmo rtmod; do
+[ -n "$MANIFEST" ] || { sed -n '4,7p' "$0" >&2; exit 2; }
+NEEDED=(rtmod); [ "$BUILD" = 0 ] || NEEDED=(rtmo rtmod)
+for cmd in "${NEEDED[@]}"; do
     command -v "$cmd" >/dev/null || { echo "[ERROR] '$cmd' not found: run install.sh --role developer --role device" >&2; exit 1; }
 done
 
-PROFILE="$(rtmo validate "$MANIFEST" "${OVERRIDES[@]}" --print profile)" || exit 1
+# effective <profile|manifest>: the implementation name, or the manifest with the
+# overrides applied. rtmo when installed, else the DSL with the system python3
+# (a device has only rtmod; rtmod apply validates the manifest anyway).
+effective() {
+    if command -v rtmo >/dev/null; then
+        rtmo validate "$MANIFEST" "${OVERRIDES[@]}" --print "$1"
+    else
+        PYTHONPATH="$ROOT/toolchain" python3 - "$1" "$MANIFEST" "${OVERRIDES[@]}" <<'PY'
+import argparse, sys, yaml
+from dsl.overrides import add_arguments, from_arguments, override, read
+what, path = sys.argv[1], sys.argv[2]
+ap = argparse.ArgumentParser(); add_arguments(ap)
+data = override(read(path), **from_arguments(ap.parse_args(sys.argv[3:])))
+if what == "profile":
+    d = data["deployment"]; print(f"{d['coordination']}-{d['technology']}")
+else:
+    sys.stdout.write(yaml.safe_dump(data, sort_keys=False, default_flow_style=False, width=100))
+PY
+    fi
+}
+
+PROFILE="$(effective profile)" || exit 1
 rl_init_results "$ROOT/results/$PROFILE" "$NAME" || exit 1
 EFFECTIVE="$(mktemp)"
 trap 'rm -f "$EFFECTIVE"' EXIT
-rtmo validate "$MANIFEST" "${OVERRIDES[@]}" --print manifest > "$EFFECTIVE" || exit 1
+effective manifest > "$EFFECTIVE" || exit 1
 
-echo "=== [1/5] Build ($PROFILE) ==="
-rtmo build "$MANIFEST" "${OVERRIDES[@]}" || { echo "[ERROR] build failed" >&2; exit 1; }
+if [ "$BUILD" = 1 ]; then
+    echo "=== [1/5] Build ($PROFILE) ==="
+    rtmo build "$MANIFEST" "${OVERRIDES[@]}" || { echo "[ERROR] build failed" >&2; exit 1; }
+else
+    echo "=== [1/5] Build: skipped (--no-build, images pushed with rtmo push) ==="
+fi
 
 echo "=== [2/5] Clean up the previous run ==="
 rtmod stop || true

@@ -2,6 +2,16 @@
 #include <stdio.h>
 #include <time.h>
 #include <stdarg.h>
+#include <errno.h>
+#include <limits.h>     /* PIPE_BUF */
+#include <unistd.h>     /* write, STDOUT_FILENO */
+
+/* One log line, newline included; longer messages are truncated. It must stay
+ * <= PIPE_BUF so that a single write() to a pipe is atomic (POSIX), and small
+ * because it lives on the stack of task threads created with PTHREAD_STACK_MIN.
+ * A [PERF] line is about 250 bytes. */
+#define LOG_LINE_MAX 1024
+_Static_assert(LOG_LINE_MAX <= PIPE_BUF, "a log line must fit in one atomic pipe write");
 
 /* Get timestamp in "YYYY-MM-DD HH:MM:SS,mmm" format */
 static void get_timestamp(char *buffer, size_t len) {
@@ -29,21 +39,41 @@ void log_message(log_level_t level, const char *component, const char *fmt, ...)
     char timestamp[32];
     get_timestamp(timestamp, sizeof(timestamp));
 
+    /* Format the whole line in a local buffer, then send it with ONE write():
+     *  - no user-space lock: the former flockfile(stdout) was shared by every thread
+     *    of the process, without priority inheritance; a task thread blocked on it
+     *    went to the tail of its SCHED_FIFO priority list and waited for a whole task
+     *    of the same priority on its core (~86 ms outliers in q_tw_em_ms);
+     *  - still one line at a time: a write() of at most PIPE_BUF bytes to a pipe
+     *    (docker logs) is atomic, so lines are never interleaved or glued together;
+     *  - no stdio buffer, so nothing to flush and the order is the order of write(). */
+    char line[LOG_LINE_MAX];
+    int n = snprintf(line, sizeof(line), "%s [%s] %s: ", timestamp, level_str[level], component);
+    if (n < 0) return;
+    size_t len = (size_t)n < sizeof(line) ? (size_t)n : sizeof(line) - 1;
+
     va_list args;
     va_start(args, fmt);
-
-    /* One line at a time: without the lock another thread can write between the
-     * three calls, and a [PERF] line is glued to the next one (lost or corrupted record) */
-    flockfile(stdout);
-    printf("%s [%s] %s: ", timestamp, level_str[level], component);
-    vprintf(fmt, args);
-    printf("\n");
-
-    /* Flush immediately so log order is preserved under RT scheduling */
-    fflush(stdout);
-    funlockfile(stdout);
-
+    n = vsnprintf(line + len, sizeof(line) - len, fmt, args);
     va_end(args);
+    if (n > 0) {
+        len += (size_t)n < sizeof(line) - len ? (size_t)n : sizeof(line) - len - 1;
+    }
+
+    /* Too long: truncate, keeping room for the newline */
+    if (len > sizeof(line) - 2) len = sizeof(line) - 2;
+    line[len++] = '\n';
+
+    const char *p = line;
+    while (len > 0) {
+        ssize_t w = write(STDOUT_FILENO, p, len);
+        if (w < 0) {
+            if (errno == EINTR) continue;
+            return;     /* nowhere to report a logging failure */
+        }
+        p += w;
+        len -= (size_t)w;
+    }
 }
 
 void log_perf(const char *component, int iteration, unsigned int task_id,

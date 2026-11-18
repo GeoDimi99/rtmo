@@ -125,15 +125,15 @@ GSList *schedule_get_results(schedule_t *sched, guint16 id)
 }
 
 
-void schedule_set_result(schedule_t *sched, guint16 id, const gchar *output) {
-    g_return_if_fail(sched != NULL);
-    g_return_if_fail(output != NULL);
+gint schedule_set_result(schedule_t *sched, guint16 id, const gchar *output) {
+    g_return_val_if_fail(sched != NULL, -1);
+    g_return_val_if_fail(output != NULL, -1);
 
     /* Read-only lookup: the table is not modified while the schedule runs */
     task_result_t *res = g_hash_table_lookup(sched->schedule_results, GINT_TO_POINTER((gint)id));
     if (res == NULL) {
         log_message(LOG_ERROR, "execution-manager", "schedule_set_result: Task ID %u not found.", id);
-        return;
+        return -1;
     }
 
     /* 1. Add the new output in the list (private to this thread until published) */
@@ -148,7 +148,9 @@ void schedule_set_result(schedule_t *sched, guint16 id, const gchar *output) {
         g_atomic_int_set(&res->remaining_runs, left);
     }
 
-    log_message(LOG_INFO, "execution-manager", "Task %u updated: %d runs left.", id, left);
+    /* No log here: logging can block the thread (stdout), and this runs inside the
+     * measured result window. The caller logs after end_time_result. */
+    return left;
 }
 
 

@@ -67,7 +67,9 @@ void schedule_free(schedule_t *sched);
 
 /* Schedule Getters/Setters */
 GSList *schedule_get_results(schedule_t *sched, guint16 id);
-void schedule_set_result(schedule_t *sched, guint16 id, const gchar *output);
+/* Returns the remaining runs of the task after the update, -1 if the task ID is unknown.
+ * Called inside the measured result window: it does not log (see task_wrapper_func). */
+gint schedule_set_result(schedule_t *sched, guint16 id, const gchar *output);
 
 /* Schedule Methods */
 void schedule_add_task(schedule_t *sched, guint16 id, const gchar *name, GThreadFunc task_exec, gint policy, gint8 priority, gint cpu_affinity, guint8 repetition, GSList *depends_on,  gint64 start_time, gint64 end_time, GSList* input);
