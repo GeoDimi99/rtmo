@@ -26,11 +26,11 @@ This repository hosts the **reference implementations** of the framework describ
 │   ├── choreography/ipc/{mqueue,zeromq}/
 │   ├── native/execution-manager/     #   bare-metal baseline (no Docker)
 │   └── proto/task_service.proto      #   gRPC service definition
-├── tooling/                          # Python (see tooling/README.md)
+├── toolchain/                        # Python (see toolchain/README.md)
 │   ├── dsl/                          #   manifest model, validation, legacy converter
 │   ├── builder/                      #   build profiles and image builds (developer side)
 │   ├── deploy-manager/               #   run profiles and Redis plan encoders (device side)
-│   └── tests/                        #   python3 -m unittest discover -s tooling/tests
+│   └── tests/                        #   python3 -m unittest discover -s toolchain/tests
 ├── docker/                           # deploy-manager.Dockerfile; <impl>/ task-wrapper and execution-manager
 │                                     #   Dockerfiles (build context: repository root)
 ├── device/                           # compose.yaml (the device Redis), device.yaml.example
@@ -67,9 +67,9 @@ This repository hosts the **reference implementations** of the framework describ
 
 The four containerised implementations share the same building blocks:
 
-- **Image builder** (`rtmo build`, `tooling/builder/`, runs on the developer machine): reads the manifest and
+- **Image builder** (`rtmo build`, `toolchain/builder/`, runs on the developer machine): reads the manifest and
   builds one Docker image per task on top of the implementation's task-wrapper base image.
-- **Deploy manager** (`rtmod apply`, `tooling/deploy-manager/`, container): reads the manifest, starts one
+- **Deploy manager** (`rtmod apply`, `toolchain/deploy-manager/`, container): reads the manifest, starts one
   task-wrapper container per task image and writes the execution plan into **Redis**.
 - **Orchestration**: a central **execution manager** reads the plan from Redis and triggers the
   task-wrappers (workers).
@@ -85,7 +85,9 @@ can be used by all of them. The Redis layout of the execution plan is implementa
 
 ## Common prerequisites
 
-Every sub-project needs:
+`install.sh` checks all of them and installs the missing packages with apt (Debian/Ubuntu;
+interactive mode asks first); `./install.sh --role <role> --check` only lists what it would add. Every
+sub-project needs:
 
 - **Linux host with `PREEMPT_RT` kernel**: `SCHED_FIFO`, `mlockall`, `SYS_NICE`, POSIX mqueue and Unix
   sockets.
@@ -114,7 +116,7 @@ sudo ./install.sh --role developer --role device   # rtmo, rtmod, deploy-manager
 ./install.sh --role developer --check              # only check the prerequisites
 ```
 
-Then, with a manifest (schema 0.1, see `tooling/README.md` to convert a legacy one):
+Then, with a manifest (schema 0.1, see `toolchain/README.md` to convert a legacy one):
 
 ```bash
 rtmo validate my_app.yaml

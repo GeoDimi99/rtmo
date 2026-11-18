@@ -6,7 +6,7 @@ A legacy manifest does not say how it is deployed, so the coordination and
 technology are arguments. control_cpu defaults to 4, the core every runtime
 hard-codes today; task_cpus defaults to the cores the tasks are pinned to.
 
-    PYTHONPATH=tooling python3 -m dsl.convert legacy.yaml \\
+    PYTHONPATH=toolchain python3 -m dsl.convert legacy.yaml \\
         --coordination choreography --technology zeromq > manifest.yaml
 """
 

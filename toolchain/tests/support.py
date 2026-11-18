@@ -1,8 +1,8 @@
 """
-Shared helpers of the tooling tests (standard library only, plus the PyYAML
-and docker modules the tooling needs anyway).
+Shared helpers of the toolchain tests (standard library only, plus the PyYAML
+and docker modules the toolchain needs anyway).
 
-- puts tooling/, tooling/builder/ and tooling/deploy-manager/ on sys.path
+- puts toolchain/, toolchain/builder/ and toolchain/deploy-manager/ on sys.path
 - FakeRedis: in-memory hashes, values encoded as redis-py encodes them
 - FakeDocker: records containers.run() calls instead of starting containers
 - manifests(): the legacy manifests the equivalence tests run on, and where the

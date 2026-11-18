@@ -3,7 +3,7 @@
 
 #include <glib.h>
 #include <sched.h>
-#include <pthread.h>        // Mutex manager
+#include <pthread.h>
 
 /* --- Utils Structures --- */
 
@@ -29,9 +29,19 @@ typedef struct {
     GSList *data_list; /* List of activation_data_t* or expiration_data_t* */
 } timeline_entry_t;
 
+/*
+ * Lock-free result slot. Ownership rules (no mutex needed):
+ *  - The hash table is only modified while loading (schedule_add_task) and is
+ *    read-only while the schedule runs, so concurrent lookups are safe.
+ *  - Each slot has a single writer: the task thread owning that task_id.
+ *    output_list is private to it until remaining_runs is published.
+ *  - remaining_runs is accessed only via g_atomic_int_* (full barrier): the
+ *    reader may touch output_list only after observing remaining_runs == 0.
+ *  - schedule_reset/schedule_free must run only when no task thread is alive.
+ */
 typedef struct {
     GSList *output_list;   /* List of GString* */
-    guint8 remaining_runs;
+    gint remaining_runs;   /* atomic */
 } task_result_t;
 
 /* --- Schedule Main Structure --- */
@@ -45,7 +55,6 @@ typedef struct {
     GQueue *schedule_start_info;
     GQueue *schedule_end_info;
     GHashTable *schedule_results;   // Map: Task ID (guint16) -> task_result_t* 
-    pthread_mutex_t schedule_results_mutex;
     gint64 schedule_duration;
     gint schedule_iterations;
 } schedule_t;

@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
 # rtmod: written by install.sh from scripts/launchers/rtmod
 #
-# Runs the deploy-manager image for one command. The container gets:
-#   - the host network (Redis on localhost:6379, gRPC task services),
-#   - the Docker socket (it starts the task containers),
-#   - the gRPC socket folder (readiness check),
-#   - for 'apply', the manifest's folder, read-only, at the same path.
+# Runs the deploy-manager for one command: service 'deploy-manager' of
+# device/compose.yaml (network, Docker socket, gRPC socket folder are set there).
+# For 'apply', the manifest's folder is added, read-only, at the same path.
 set -euo pipefail
 
 RTMO_HOME="@RTMO_HOME@"
-IMAGE="rtmo/deploy-manager:$(cat "$RTMO_HOME/VERSION")"
+export RTMO_VERSION="$(cat "$RTMO_HOME/VERSION")"     # the image tag in compose.yaml
 
-INFRA_CPU=3
+RTMO_INFRA_CPU=3
 if [ -f /etc/rtmo/device.yaml ]; then
     v="$(sed -nE 's/^infra_cpu:[[:space:]]*([0-9]+).*/\1/p' /etc/rtmo/device.yaml | head -n1)"
-    INFRA_CPU="${v:-$INFRA_CPU}"
+    RTMO_INFRA_CPU="${v:-$RTMO_INFRA_CPU}"
 fi
+export RTMO_INFRA_CPU
 
 args=("$@")
 mounts=()
@@ -35,9 +34,9 @@ if [ "${1:-}" = "apply" ]; then
     done
 fi
 
-mkdir -p /tmp/rtmo-grpc-ipc
-exec docker run --rm --network host --cpuset-cpus "$INFRA_CPU" \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    -v /tmp/rtmo-grpc-ipc:/ipc \
+mkdir -p /tmp/rtmo-grpc-ipc        # created here so it belongs to the user, not to root
+# -T: no terminal, so the output stays plain when piped (as with 'docker run' before).
+# --no-deps: Redis is a service of its own, started by install.sh.
+exec docker compose -f "$RTMO_HOME/device/compose.yaml" run --rm -T --no-deps \
     "${mounts[@]}" \
-    "$IMAGE" "${args[@]}"
+    deploy-manager "${args[@]}"

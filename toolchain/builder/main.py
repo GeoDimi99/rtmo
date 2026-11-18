@@ -8,7 +8,7 @@ rtmo: developer side of RTMO.
 
 Every command takes --coordination, --technology and --iterations to override
 the manifest (benchmark campaigns run one scenario on every implementation).
-Run with tooling/ on PYTHONPATH (the installed launcher does this).
+Run with toolchain/ on PYTHONPATH (the installed launcher does this).
 """
 
 import argparse

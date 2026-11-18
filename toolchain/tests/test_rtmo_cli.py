@@ -13,7 +13,7 @@ import support
 from dsl import lock
 from dsl.convert import convert, dump
 
-# Both tooling/builder and tooling/deploy-manager have a main.py: load rtmo's by path.
+# Both toolchain/builder and toolchain/deploy-manager have a main.py: load rtmo's by path.
 _spec = importlib.util.spec_from_file_location("rtmo_main", support.TOOLING / "builder" / "main.py")
 rtmo = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(rtmo)

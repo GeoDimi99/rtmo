@@ -1,4 +1,4 @@
-# tooling
+# toolchain
 
 Python side of RTMO. Run each component with this folder on `PYTHONPATH`, so both can
 `import dsl`.
@@ -18,7 +18,7 @@ A legacy manifest (`version: "1.0"`, no `deployment` section) does not say how i
 so the coordination and technology are arguments:
 
 ```bash
-PYTHONPATH=tooling python3 -m dsl.convert benchmarks/scenarios/dual_core_sep.yaml \
+PYTHONPATH=toolchain python3 -m dsl.convert benchmarks/scenarios/dual_core_sep.yaml \
     --coordination choreography --technology zeromq > dual_core_sep.yaml
 ```
 
@@ -29,7 +29,7 @@ PYTHONPATH=tooling python3 -m dsl.convert benchmarks/scenarios/dual_core_sep.yam
 Standard library `unittest`; they only need PyYAML and the `docker` module, no Docker daemon or Redis.
 
 ```bash
-python3 -m unittest discover -s tooling/tests -v
+python3 -m unittest discover -s toolchain/tests -v
 ```
 
 The equivalence tests run on the two manifests in `tests/fixtures/` and, on the `benchmarks`

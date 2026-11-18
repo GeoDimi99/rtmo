@@ -18,8 +18,8 @@ Paths from the root of the RTMO repository:
 runtime/common/                            # logger, task model (same in every implementation)
 runtime/choreography/ipc/zeromq/           # task_ipc.h: message protocol of this implementation
 runtime/choreography/task-wrapper/zeromq/  # C: task-wrapper base image (local execution manager + task harness)
-tooling/builder/                           # rtmo: builds the base, task (and execution-manager) images
-tooling/deploy-manager/                    # rtmod: profile 'choreography-zeromq' (run_profiles.py), plan encoder encoders/choreography.py
+toolchain/builder/                           # rtmo: builds the base, task (and execution-manager) images
+toolchain/deploy-manager/                    # rtmod: profile 'choreography-zeromq' (run_profiles.py), plan encoder encoders/choreography.py
 docker/choreography-zeromq/                # task-wrapper Dockerfile(s)
 benchmarks/scenarios/*.yaml                # benchmark scenarios, DSL 0.1 (benchmarks branch)
 benchmarks/tasks/stress_task_*/            # task sources, shared by every implementation (benchmarks branch)
@@ -75,9 +75,9 @@ sudo rtmod status
 sudo rtmod stop
 ```
 
-The container settings of this implementation are in `tooling/deploy-manager/run_profiles.py`
-(profile `choreography-zeromq`), the Redis plan it reads in `tooling/deploy-manager/encoders/choreography.py`. Manifests
-use the RTMO DSL 0.1 (`tooling/README.md`); the whole campaign is `benchmarks/run-campaign.sh`.
+The container settings of this implementation are in `toolchain/deploy-manager/run_profiles.py`
+(profile `choreography-zeromq`), the Redis plan it reads in `toolchain/deploy-manager/encoders/choreography.py`. Manifests
+use the RTMO DSL 0.1 (`toolchain/README.md`); the whole campaign is `benchmarks/run-campaign.sh`.
 
 ---
 
@@ -128,10 +128,10 @@ The `[PERF]` lines of all task containers are what `tools/perf_report.py` turns 
 | `Source path '<path>' for alias '<alias>' does not exist.` (image-builder) | A `src:` folder declared in the manifest does not exist on disk | Create the missing `benchmarks/tasks/<alias>/` folder, or remove the alias from `manifest.yaml` |
 | Task containers hang at the start barrier | Some task containers crashed before sending `READY` | `docker ps -a --filter "name=stress_task_"` and check the logs of the missing ones |
 | `zmq_bind(PULL) failed` / `zmq_bind(XPUB) failed` | Stale Unix socket file in the shared volume | The leader unlinks them at start; if not, `docker volume rm zmq_ipc && docker volume create zmq_ipc` |
-| `SCHED_FIFO` / `mlock` errors | Container missing capabilities or `rtprio` ulimit | `rtmod apply` sets them (profile `choreography-zeromq` in `tooling/deploy-manager/run_profiles.py`); check with `docker inspect <alias>` |
+| `SCHED_FIFO` / `mlock` errors | Container missing capabilities or `rtprio` ulimit | `rtmod apply` sets them (profile `choreography-zeromq` in `toolchain/deploy-manager/run_profiles.py`); check with `docker inspect <alias>` |
 | Tasks miss their deadlines | CPU contention / wrong affinity | Use isolated CPUs (`isolcpus=...` boot param) and pin tasks via `cpu_affinity` |
 
-More, for installing and running RTMO: the troubleshooting table of the RTMO Field Guide and `tooling/README.md`.
+More, for installing and running RTMO: the troubleshooting table of the RTMO Field Guide and `toolchain/README.md`.
 
 ---
 

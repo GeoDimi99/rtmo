@@ -89,12 +89,6 @@ schedule_t* schedule_new(const gchar *name, const gchar *version, const gchar *l
     sched->schedule_start_info = g_queue_new();
     sched->schedule_end_info = g_queue_new();
 
-    /* Mutex Initializzations */
-    pthread_mutexattr_t attr;
-    pthread_mutexattr_init(&attr);
-    pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT);
-    pthread_mutex_init(&sched->schedule_results_mutex, &attr);
-    pthread_mutexattr_destroy(&attr);
     
     /* HashTable Initialization */
     sched->schedule_results = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, task_result_free);
@@ -106,9 +100,6 @@ schedule_t* schedule_new(const gchar *name, const gchar *version, const gchar *l
 
 void schedule_free(schedule_t *sched) {
     if (!sched) return;
-
-    /* Destroy Mutex */
-    pthread_mutex_destroy(&sched->schedule_results_mutex);
 
     /* Destroy the other datas structures */
     g_string_free(sched->schedule_name, TRUE);
@@ -126,19 +117,11 @@ GSList *schedule_get_results(schedule_t *sched, guint16 id)
 {
     if (!sched) return NULL;
 
-    pthread_mutex_lock(&sched->schedule_results_mutex);     // LOCK MUTEX
+    task_result_t *res = g_hash_table_lookup(sched->schedule_results, GINT_TO_POINTER((gint)id));
 
-    task_result_t *res = g_hash_table_lookup(
-        sched->schedule_results,
-        GINT_TO_POINTER(id)
-    );
-
-    GSList *results = res ? res->output_list : NULL;
-
-    pthread_mutex_unlock(&sched->schedule_results_mutex);   // UNLOCK MUTEX
-
-
-    return results;
+    /* The output list is published only once the task has completed */
+    if (!res || g_atomic_int_get(&res->remaining_runs) > 0) return NULL;
+    return res->output_list;
 }
 
 
@@ -146,30 +129,26 @@ void schedule_set_result(schedule_t *sched, guint16 id, const gchar *output) {
     g_return_if_fail(sched != NULL);
     g_return_if_fail(output != NULL);
 
-    pthread_mutex_lock(&sched->schedule_results_mutex);     // LOCK MUTEX
-
-    /* Find the result associated to the ID in the HashTable */
+    /* Read-only lookup: the table is not modified while the schedule runs */
     task_result_t *res = g_hash_table_lookup(sched->schedule_results, GINT_TO_POINTER((gint)id));
-
     if (res == NULL) {
-        log_message(LOG_WARN, "execution-manager", "schedule_set_result: Task ID %u not found.", id);
+        log_message(LOG_ERROR, "execution-manager", "schedule_set_result: Task ID %u not found.", id);
         return;
     }
 
-    
-    /* 1. Add the new output in the list */
-    GString *new_output = g_string_new(output);
-    res->output_list = g_slist_append(res->output_list, new_output);
+    /* 1. Add the new output in the list (private to this thread until published) */
+    res->output_list = g_slist_append(res->output_list, g_string_new(output));
 
-    /* 2. Decrement the remainning runs (if greather than 0) */
-
-    if (res->remaining_runs > 0) {
-        res->remaining_runs--;
+    /* 2. Publish: decrement the remaining runs (if greater than 0).
+     *    Single writer per slot, so get + set is not a lost-update race;
+     *    the atomic set is a full barrier that makes output_list visible first. */
+    gint left = g_atomic_int_get(&res->remaining_runs);
+    if (left > 0) {
+        left--;
+        g_atomic_int_set(&res->remaining_runs, left);
     }
 
-    pthread_mutex_unlock(&sched->schedule_results_mutex);   // UNLOCK MUTEX
-
-    log_message(LOG_INFO, "execution-manager", "Task %u updated: %u runs left.", id, res->remaining_runs);
+    log_message(LOG_INFO, "execution-manager", "Task %u updated: %d runs left.", id, left);
 }
 
 
@@ -237,9 +216,11 @@ void schedule_add_task(schedule_t *sched,
     task_result_t *res = g_new0(task_result_t, 1);
     res->remaining_runs = repetition;
     res->output_list = NULL;
-    pthread_mutex_lock(&sched->schedule_results_mutex);     // LOCK MUTEX     
+    /* Loading phase: no task thread exists yet */
+    if (g_hash_table_contains(sched->schedule_results, GINT_TO_POINTER((gint)id))) {
+        log_message(LOG_WARN, "execution-manager", "schedule_add_task: duplicate Task ID %u, previous result slot replaced.", id);
+    }
     g_hash_table_insert(sched->schedule_results, GINT_TO_POINTER((gint)id), res);
-    pthread_mutex_unlock(&sched->schedule_results_mutex);   // UNLOCK MUTEX
 
     /* 7. Update schedule duration */
     // if (end_time > sched->schedule_duration)
@@ -249,7 +230,7 @@ void schedule_add_task(schedule_t *sched,
 void schedule_reset(schedule_t *sched) {
     g_return_if_fail(sched != NULL);
 
-    pthread_mutex_lock(&sched->schedule_results_mutex); // LOCK
+    /* Precondition: no task thread of the previous iteration is still running */
 
     GHashTableIter iter;
     gpointer key, value;
@@ -276,15 +257,13 @@ void schedule_reset(schedule_t *sched) {
             for (GSList *s = entry->data_list; s; s = s->next) {
                 activation_data_t *act = s->data;
                 if (act->task_id == task_id) {
-                    res->remaining_runs = act->repetition;
+                    g_atomic_int_set(&res->remaining_runs, act->repetition);
                     found = TRUE;
                     break;
                 }
             }
         }
     }
-
-    pthread_mutex_unlock(&sched->schedule_results_mutex); // UNLOCK
 }
 
 
@@ -295,15 +274,8 @@ gboolean schedule_is_task_completed(schedule_t *sched, guint16 id)
 {
     if (!sched) return FALSE;
 
-    pthread_mutex_lock(&sched->schedule_results_mutex);     // LOCK MUTEX
-    task_result_t *res = g_hash_table_lookup(
-        sched->schedule_results,
-        GINT_TO_POINTER(id)
-    );
-    gboolean completed = (res && res->remaining_runs == 0);
-    pthread_mutex_unlock(&sched->schedule_results_mutex);   // UNLOCK MUTEX
-
-    return completed;
+    task_result_t *res = g_hash_table_lookup(sched->schedule_results, GINT_TO_POINTER((gint)id));
+    return res && g_atomic_int_get(&res->remaining_runs) == 0;
 }
 
 
@@ -356,11 +328,12 @@ void schedule_print(schedule_t *sched) {
         guint16 id = (guint16)GPOINTER_TO_INT(key);
         task_result_t *res = value;
 
-        const char *st = (res->remaining_runs == 0) ? "DONE" : "WAIT";
+        gint runs = g_atomic_int_get(&res->remaining_runs);
+        const char *st = (runs == 0) ? "DONE" : "WAIT";
         const char *out = (res->output_list) ? ((GString*)res->output_list->data)->str : "{}";
 
-        log_message(LOG_INFO, "execution-manager", "    ID: %-3u | Status: %-4s | Runs: %-2u | Data: %s",
-                id, st, res->remaining_runs, out);
+        log_message(LOG_INFO, "execution-manager", "    ID: %-3u | Status: %-4s | Runs: %-2d | Data: %s",
+                id, st, runs, out);
     }
 }
 

@@ -19,8 +19,8 @@ runtime/orchestration/ipc/grpc/                # task_ipc.h: message protocol of
 runtime/orchestration/execution-manager/grpc/  # C/C++: central execution manager (gRPC client)
 runtime/orchestration/task-wrapper/grpc/       # C/C++: task-wrapper base image (gRPC server)
 runtime/proto/task_service.proto               # gRPC service definition
-tooling/builder/                               # rtmo: builds the base, task (and execution-manager) images
-tooling/deploy-manager/                        # rtmod: profile 'orchestration-grpc' (run_profiles.py), plan encoder encoders/orchestration_grpc.py
+toolchain/builder/                               # rtmo: builds the base, task (and execution-manager) images
+toolchain/deploy-manager/                        # rtmod: profile 'orchestration-grpc' (run_profiles.py), plan encoder encoders/orchestration_grpc.py
 docker/orchestration-grpc/                     # task-wrapper and execution-manager Dockerfile(s)
 benchmarks/scenarios/*.yaml                    # benchmark scenarios, DSL 0.1 (benchmarks branch)
 benchmarks/tasks/stress_task_*/                # task sources, shared by every implementation (benchmarks branch)
@@ -81,9 +81,9 @@ sudo rtmod status
 sudo rtmod stop
 ```
 
-The container settings of this implementation are in `tooling/deploy-manager/run_profiles.py`
-(profile `orchestration-grpc`), the Redis plan it reads in `tooling/deploy-manager/encoders/orchestration_grpc.py`. Manifests
-use the RTMO DSL 0.1 (`tooling/README.md`); the whole campaign is `benchmarks/run-campaign.sh`.
+The container settings of this implementation are in `toolchain/deploy-manager/run_profiles.py`
+(profile `orchestration-grpc`), the Redis plan it reads in `toolchain/deploy-manager/encoders/orchestration_grpc.py`. Manifests
+use the RTMO DSL 0.1 (`toolchain/README.md`); the whole campaign is `benchmarks/run-campaign.sh`.
 
 ---
 
@@ -149,7 +149,7 @@ execution-manager-grpc  | [INFO] execution-manager: Test suite finished successf
 | Execution-manager reports `0 task(s)` and exits | Started before the deploy-manager filled Redis | Run the deploy-manager first and wait for it to exit with code 0 |
 | Tasks miss their deadlines | CPU contention / wrong affinity | Use isolated CPUs (`isolcpus=...` boot param) and pin tasks via `cpu_affinity` |
 
-More, for installing and running RTMO: the troubleshooting table of the RTMO Field Guide and `tooling/README.md`.
+More, for installing and running RTMO: the troubleshooting table of the RTMO Field Guide and `toolchain/README.md`.
 
 ---
 

@@ -1,8 +1,12 @@
-# Device stack: one Redis for every implementation (started by install.sh --role device).
+# Device stack (install.sh --role device): one Redis for every implementation, and the
+# deploy-manager image that rtmod runs.
 #
 # The runtimes read their plan from Redis at startup only. The mqueue and zeromq
 # runtimes connect to 'redis' (the alias on the 'rtmo' network); the gRPC ones,
 # on the host network, to 'localhost' (the published port).
+#
+# Variables, set by install.sh and rtmod: RTMO_VERSION (image tag), RTMO_COMMIT (build
+# only), RTMO_INFRA_CPU (the core of Redis and of the deploy-manager).
 name: rtmo
 
 services:
@@ -16,6 +20,27 @@ services:
         aliases: [redis]
     ports:
       - "127.0.0.1:6379:6379"
+
+  # rtmod: one container per command ('docker compose run --rm deploy-manager <args>'),
+  # never started by 'up' (profile 'cli'). The container gets:
+  #   - the host network (Redis on localhost:6379, gRPC task services),
+  #   - the Docker socket (it starts the task containers),
+  #   - the gRPC socket folder (readiness check).
+  # For 'apply', rtmod adds the manifest's folder, read-only, at the same path.
+  deploy-manager:
+    profiles: [cli]
+    build:
+      context: ..
+      dockerfile: docker/deploy-manager.Dockerfile
+      args:
+        RTMO_VERSION: "${RTMO_VERSION:-unknown}"
+        RTMO_COMMIT: "${RTMO_COMMIT:-}"
+    image: "rtmo/deploy-manager:${RTMO_VERSION:-unknown}"
+    network_mode: host
+    cpuset: "${RTMO_INFRA_CPU:-3}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/rtmo-grpc-ipc:/ipc
 
 networks:
   rtmo:
